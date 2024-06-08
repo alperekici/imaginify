@@ -72,6 +72,7 @@ const Sidebar = () => {
                   <Link href="/sign-in">Login</Link>
                 </Button>
               </SignedOut>
+              
             </nav>
         </div>
     </aside>
