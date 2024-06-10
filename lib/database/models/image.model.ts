@@ -1,5 +1,4 @@
 import { Schema, model, models } from "mongoose";
-import { config } from "process";
 
 export interface IImage extends Document {
     title: string;
