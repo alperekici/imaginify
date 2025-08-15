@@ -24,6 +24,7 @@ export type SerializedImage = {
   color?: string;
   prompt?: string;
   author: {
+    [x: string]: string | null;
     _id: string;
     firstName: string;
     lastName: string;
