@@ -6,44 +6,74 @@ import { handleError } from "../utils";
 import User from "../database/models/user.model";
 import Image from "../database/models/image.model";
 import { redirect } from "next/navigation";
+import { v2 as cloudinary } from "cloudinary";
+import { Types } from "mongoose";
 
-import { v2 as cloudinary } from 'cloudinary'
+// ✅ Frontend-friendly type
+export type SerializedImage = {
+  _id: string;
+  title: string;
+  transformationType: string;
+  publicId: string;
+  secureURL: string;
+  width?: number;
+  height?: number;
+  config?: object;
+  transformationUrl?: string;
+  aspectRatio?: string;
+  color?: string;
+  prompt?: string;
+  author: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+  };
+  createdAt?: Date;
+  updatedAt?: Date;
+};
 
-const populateUser = (query: any) => query.populate({
-  path: 'author',
-  model: User,
-  select: '_id firstName lastName clerkId'
-})
+// Helper to serialize Mongo ObjectId
+const serializeImage = (img: any): SerializedImage => ({
+  ...img,
+  _id: (img._id as Types.ObjectId).toString(),
+  author: {
+    ...img.author,
+    _id: img.author?._id?.toString() || "",
+  },
+});
 
-// ADD IMAGE
+// Populate author info
+const populateUser = (query: any) =>
+  query.populate({
+    path: "author",
+    model: User,
+    select: "_id firstName lastName clerkId",
+  });
+
+// ---------- ADD IMAGE ----------
 export async function addImage({ image, userId, path }: AddImageParams) {
   try {
     await connectToDatabase();
-
     const author = await User.findById(userId);
-
-    if (!author) {
-      throw new Error("User not found");
-    }
+    if (!author) throw new Error("User not found");
 
     const newImage = await Image.create({
       ...image,
       author: author._id,
-    })
+    });
 
     revalidatePath(path);
 
-    return JSON.parse(JSON.stringify(newImage));
+    return serializeImage(newImage.toObject());
   } catch (error) {
-    handleError(error)
+    handleError(error);
   }
 }
 
-// UPDATE IMAGE
+// ---------- UPDATE IMAGE ----------
 export async function updateImage({ image, userId, path }: UpdateImageParams) {
   try {
     await connectToDatabase();
-
     const imageToUpdate = await Image.findById(image._id);
 
     if (!imageToUpdate || imageToUpdate.author.toHexString() !== userId) {
@@ -54,46 +84,49 @@ export async function updateImage({ image, userId, path }: UpdateImageParams) {
       imageToUpdate._id,
       image,
       { new: true }
-    )
+    ).lean();
+
+    if (!updatedImage) throw new Error("Image update failed");
 
     revalidatePath(path);
 
-    return JSON.parse(JSON.stringify(updatedImage));
+    return serializeImage(updatedImage);
   } catch (error) {
-    handleError(error)
+    handleError(error);
   }
 }
 
-// DELETE IMAGE
+// ---------- DELETE IMAGE ----------
 export async function deleteImage(imageId: string) {
   try {
     await connectToDatabase();
-
     await Image.findByIdAndDelete(imageId);
   } catch (error) {
-    handleError(error)
-  } finally{
-    redirect('/')
+    handleError(error);
+  } finally {
+    redirect("/");
   }
 }
 
-// GET IMAGE
+// ---------- GET IMAGE BY ID ----------
 export async function getImageById(imageId: string) {
   try {
     await connectToDatabase();
+    const image = await populateUser(Image.findById(imageId)).lean();
+    if (!image) throw new Error("Image not found");
 
-    const image = await populateUser(Image.findById(imageId));
-
-    if(!image) throw new Error("Image not found");
-
-    return JSON.parse(JSON.stringify(image));
+    return serializeImage(image);
   } catch (error) {
-    handleError(error)
+    handleError(error);
   }
 }
 
-// GET IMAGES
-export async function getAllImages({ limit = 9, page = 1, searchQuery = '' }: {
+// ---------- GET ALL IMAGES ----------
+export async function getAllImages({
+  limit = 9,
+  page = 1,
+  searchQuery = "",
+}: {
   limit?: number;
   page: number;
   searchQuery?: string;
@@ -106,51 +139,48 @@ export async function getAllImages({ limit = 9, page = 1, searchQuery = '' }: {
       api_key: process.env.CLOUDINARY_API_KEY,
       api_secret: process.env.CLOUDINARY_API_SECRET,
       secure: true,
-    })
+    });
 
-    let expression = 'folder=imaginify';
-
+    let expression = "folder=imaginify";
     if (searchQuery) {
-      expression += ` AND ${searchQuery}`
+      expression += ` AND ${searchQuery}`;
     }
 
     const { resources } = await cloudinary.search
       .expression(expression)
       .execute();
 
-    const resourceIds = resources.map((resource: any) => resource.public_id);
+    const resourceIds = resources.map((r: any) => r.public_id);
+    let query: Record<string, unknown> = {};
 
-    let query = {};
-
-    if(searchQuery) {
-      query = {
-        publicId: {
-          $in: resourceIds
-        }
-      }
+    if (searchQuery) {
+      query = { publicId: { $in: resourceIds } };
     }
 
-    const skipAmount = (Number(page) -1) * limit;
+    const skipAmount = (page - 1) * limit;
 
-    const images = await populateUser(Image.find(query))
-      .sort({ updatedAt: -1 })
-      .skip(skipAmount)
-      .limit(limit);
-    
-    const totalImages = await Image.find(query).countDocuments();
-    const savedImages = await Image.find().countDocuments();
+    const images = await populateUser(
+      Image.find(query)
+        .sort({ updatedAt: -1 })
+        .skip(skipAmount)
+        .limit(limit)
+        .lean()
+    );
+
+    const totalImages = await Image.countDocuments(query);
+    const savedImages = await Image.countDocuments();
 
     return {
-      data: JSON.parse(JSON.stringify(images)),
+      data: images.map(serializeImage),
       totalPage: Math.ceil(totalImages / limit),
       savedImages,
-    }
+    };
   } catch (error) {
-    handleError(error)
+    handleError(error);
   }
 }
 
-// GET IMAGES BY USER
+// ---------- GET IMAGES BY USER ----------
 export async function getUserImages({
   limit = 9,
   page = 1,
@@ -162,18 +192,20 @@ export async function getUserImages({
 }) {
   try {
     await connectToDatabase();
+    const skipAmount = (page - 1) * limit;
 
-    const skipAmount = (Number(page) - 1) * limit;
+    const images = await populateUser(
+      Image.find({ author: userId })
+        .sort({ updatedAt: -1 })
+        .skip(skipAmount)
+        .limit(limit)
+        .lean()
+    );
 
-    const images = await populateUser(Image.find({ author: userId }))
-      .sort({ updatedAt: -1 })
-      .skip(skipAmount)
-      .limit(limit);
-
-    const totalImages = await Image.find({ author: userId }).countDocuments();
+    const totalImages = await Image.countDocuments({ author: userId });
 
     return {
-      data: JSON.parse(JSON.stringify(images)),
+      data: images.map(serializeImage),
       totalPages: Math.ceil(totalImages / limit),
     };
   } catch (error) {

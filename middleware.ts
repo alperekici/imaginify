@@ -1,9 +1,16 @@
 import { authMiddleware } from "@clerk/nextjs";
 
-// See https://clerk.com/docs/references/nextjs/auth-middleware
-// for more information about configuring your Middleware
 export default authMiddleware({
-  publicRoutes: ['/api/webhooks/clerk']
+  // Add these public routes so users can access them without signing in
+  publicRoutes: [
+    "/",                    // Home page
+    "/sign-in",            // Sign-in page  
+    "/sign-up",            // Sign-up page
+    "/api/webhooks/clerk"  // Your existing webhook
+  ],
+  
+  // Optional: Add debug mode to see what's happening
+  debug: true
 });
 
 export const config = {

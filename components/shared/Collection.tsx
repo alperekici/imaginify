@@ -12,12 +12,12 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { transformationTypes } from "@/constants";
-import { IImage } from "@/lib/database/models/image.model";
 import { formUrlQuery } from "@/lib/utils";
-
 import { Button } from "../ui/button";
-
 import { Search } from "./Search";
+
+// ✅ Import the frontend type from actions
+import type { SerializedImage } from "@/lib/actions/image.actions";
 
 export const Collection = ({
   hasSearch = false,
@@ -25,7 +25,7 @@ export const Collection = ({
   totalPages = 1,
   page,
 }: {
-  images: IImage[];
+  images: SerializedImage[];
   totalPages?: number;
   page: number;
   hasSearch?: boolean;
@@ -94,7 +94,8 @@ export const Collection = ({
   );
 };
 
-const Card = ({ image }: { image: IImage }) => {
+// ✅ Card now uses SerializedImage, so _id is always string
+const Card = ({ image }: { image: SerializedImage }) => {
   return (
     <li>
       <Link href={`/transformations/${image._id}`} className="collection-card">
