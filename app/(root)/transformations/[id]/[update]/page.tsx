@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs";
-import { redirect } from "next/navigation";
+import { redirect, notFound } from "next/navigation";
 
 import Header from "@/components/shared/Header";
 import TransformationForm from "@/components/shared/TransformationForm";
@@ -14,6 +14,11 @@ const Page = async ({ params: { id } }: SearchParamProps) => {
 
   const user = await getUserById(userId);
   const image = await getImageById(id);
+
+  // ✅ Guard clause for missing image
+  if (!image) {
+    notFound();
+  }
 
   const transformation =
     transformationTypes[image.transformationType as TransformationTypeKey];
